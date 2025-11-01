@@ -9,7 +9,6 @@ from datetime import datetime
 from confluent_kafka import Consumer, Producer, KafkaError
 
 sys.path.append(os.path.abspath('./src'))
-from preprocessing import load_train_data, run_preproc
 from scorer import make_pred
 
 logging.basicConfig(
@@ -43,7 +42,15 @@ class ProcessingService:
         self.producer = Producer(self.producer_config)
         
         # Загрузка данных для препроцессинга
-        self.train = load_train_data()
+        # self.train = load_train_data()
+
+    def preprocess_df(self, data):
+        data['transaction_time'] = pd.to_datetime(data['transaction_time'])
+        data['hour'] = data['transaction_time'].dt.hour
+        data['weekday'] = data['transaction_time'].dt.weekday
+        data['distance'] = (data['lat'] - data['merchant_lat']) ** 2 + (data['lon'] - data['merchant_lon']) ** 2
+        data = data.drop(columns=['transaction_time', 'name_1', 'name_2', 'lat', 'lon', 'merchant_lat', 'merchant_lon'])
+        return data
 
     def process_messages(self):
         while True:
@@ -61,9 +68,12 @@ class ProcessingService:
                 transaction_id = data['transaction_id']
                 input_df = pd.DataFrame([data['data']])
 
-                # Препроцессинг и предсказание
-                processed_df = run_preproc(self.train, input_df)
+                processed_df = self.preprocess_df(input_df)
                 submission = make_pred(processed_df, "kafka_stream")
+
+                # # Препроцессинг и предсказание
+                # processed_df = run_preproc(self.train, input_df)
+                # submission = make_pred(processed_df, "kafka_stream")
 
                 # Добавляем ID в результат
                 submission['transaction_id'] = transaction_id
