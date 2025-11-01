@@ -5,6 +5,8 @@ import json
 import time
 import os
 import uuid
+import psycopg2
+import matplotlib.pyplot as plt
 
 # Конфигурация Kafka
 KAFKA_CONFIG = {
@@ -100,3 +102,70 @@ if st.session_state.uploaded_files:
                             st.rerun()
                 else:
                     st.error("Файл не содержит данных")
+
+
+st.markdown("---")
+st.subheader("🔎 Просмотр результатов")
+
+def get_pg_connection():
+    try:
+        conn = psycopg2.connect(
+            dbname="frauddb",
+            user="user",
+            password="password",
+            host="postgres",
+            port="5432"
+        )
+        return conn
+    except Exception as e:
+        st.error(f"Не удалось подключиться к Postgres: {e}")
+        return None
+
+if st.button("Посмотреть результаты", type="primary"):
+    conn = get_pg_connection()
+    if conn is None:
+        st.stop()
+
+    try:
+        query_fraud = """
+            SELECT transaction_id, score, fraud_flag
+            FROM transactions
+            WHERE fraud_flag = 1
+            ORDER BY ctid DESC
+            LIMIT 10
+        """
+        df_fraud = pd.read_sql(query_fraud, conn)
+
+        st.markdown("Последние 10 транзакций с флагом мошенничества (fraud_flag = 1):")
+        if df_fraud.empty:
+            st.info("Записей с fraud_flag = 1 не найдено.")
+        else:
+            st.dataframe(df_fraud, use_container_width=True)
+
+        query_scores = """
+            SELECT score
+            FROM transactions
+            WHERE score IS NOT NULL
+            ORDER BY ctid DESC
+            LIMIT 100
+        """
+        df_scores = pd.read_sql(query_scores, conn)
+
+        st.markdown("Гистограмма распределения `score` для последних 100 транзакций:")
+        if df_scores.empty:
+            st.info("В базе пока нет транзакций со значениями score.")
+        else:
+            fig = plt.figure()
+            df_scores["score"].plot(kind="hist", bins=20)
+            plt.xlabel("score")
+            plt.ylabel("count")
+            plt.title("Распределение score (последние до 100 транзакций)")
+            st.pyplot(fig)
+
+    except Exception as e:
+        st.error(f"Ошибка при получении данных из Postgres: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass

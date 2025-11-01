@@ -84,6 +84,22 @@ services:
       - kafka
       - kafka-setup
 
+  postgres:
+    image: postgres:16
+    container_name: postgres_db
+    restart: always
+    networks:
+      - ml-scorer
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: frauddb
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+
   interface:
     build: ./interface
     networks:
@@ -95,6 +111,18 @@ services:
       - kafka
     ports:
       - "8501:8501"
+
+  postgresql_saver:
+    build: ./postgresql_saver
+    networks:
+      - ml-scorer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_SCORING_TOPIC: "scoring"
+    depends_on:
+      - kafka
+      - kafka-setup
+      - postgres
 
 networks:
   ml-scorer:
